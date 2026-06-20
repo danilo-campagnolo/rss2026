@@ -13,58 +13,37 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-type Feed = {
-  id: string;
-  url: string;
-  title: string;
-  siteUrl: string | null;
-  description: string | null;
-  imageUrl: string | null;
-  lastFetchedAt: string | null;
-  lastError: string | null;
-  entryCount: number;
-  unreadCount: number;
+import type { ReaderEntry as Entry, ReaderFeed as Feed, StatusFilter } from "@/lib/reader-data";
+
+type ReaderAppProps = {
+  initialFeeds?: Feed[];
+  initialEntries?: Entry[];
+  initialError?: string | null;
 };
 
-type Entry = {
-  id: string;
-  feedId: string;
-  guid: string;
-  url: string | null;
-  title: string;
-  author: string | null;
-  summary: string | null;
-  content: string | null;
-  publishedAt: string | null;
-  isRead: boolean;
-  isStarred: boolean;
-  feed: {
-    id: string;
-    title: string;
-    siteUrl: string | null;
-  };
-};
-
-type StatusFilter = "all" | "unread" | "read" | "starred";
 type MobileView = "feeds" | "entries" | "reader";
 
-export function ReaderApp() {
-  const [feeds, setFeeds] = useState<Feed[]>([]);
-  const [entries, setEntries] = useState<Entry[]>([]);
+export function ReaderApp({
+  initialFeeds = [],
+  initialEntries = [],
+  initialError = null
+}: ReaderAppProps) {
+  const [feeds, setFeeds] = useState<Feed[]>(initialFeeds);
+  const [entries, setEntries] = useState<Entry[]>(initialEntries);
   const [selectedFeedId, setSelectedFeedId] = useState("all");
-  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(initialEntries[0]?.id ?? null);
   const [status, setStatus] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
   const [feedUrl, setFeedUrl] = useState("");
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
   const [mobileView, setMobileView] = useState<MobileView>("entries");
+  const hasMountedFilters = useRef(false);
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.id === selectedEntryId) ?? entries[0] ?? null,
@@ -74,30 +53,25 @@ export function ReaderApp() {
   const unreadTotal = feeds.reduce((total, feed) => total + feed.unreadCount, 0);
 
   useEffect(() => {
-    void loadAll();
-    // Load once on mount, then let the filter-specific effect refresh entries.
+    if (initialError || initialFeeds.length === 0) {
+      return;
+    }
+
+    void refreshAll({ silent: true });
+    // Initial reader data is server-rendered; silently refresh known feeds after hydration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
+    if (!hasMountedFilters.current) {
+      hasMountedFilters.current = true;
+      return;
+    }
+
     void loadEntries();
     // Entry reloads are intentionally keyed to view controls, not function identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFeedId, status, query]);
-
-  async function loadAll() {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      await Promise.all([loadFeeds(), loadEntries()]);
-      void refreshAll({ silent: true });
-    } catch (requestError) {
-      setError(getClientError(requestError));
-    } finally {
-      setIsLoading(false);
-    }
-  }
 
   async function loadFeeds() {
     const response = await fetch("/api/feeds", { cache: "no-store" });
@@ -429,14 +403,7 @@ export function ReaderApp() {
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto">
-                {isLoading && (
-                  <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                    <Loader2 className="mr-2 animate-spin" size={16} />
-                    Loading reader
-                  </div>
-                )}
-
-                {!isLoading && entries.length === 0 && (
+                {entries.length === 0 && (
                   <div className="m-4 rounded-md border border-dashed border-line bg-white p-6 text-sm text-slate-500">
                     No entries match this view.
                   </div>
@@ -578,9 +545,10 @@ function formatDate(value: string | null) {
     return "No date";
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
     year: "numeric"
   }).format(new Date(value));
 }
