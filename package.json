@@ -1,0 +1,52 @@
+{
+  "name": "rss-feed-engine",
+  "version": "0.1.0",
+  "private": false,
+  "description": "A local-first, single-user RSS and Atom reader built with Next.js, Prisma, and SQLite.",
+  "license": "MIT",
+  "scripts": {
+    "predev": "node scripts/ensure-sqlite-db.mjs && prisma migrate deploy",
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "lint": "eslint . --max-warnings=0",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:ensure": "node scripts/ensure-sqlite-db.mjs",
+    "predb:migrate": "node scripts/ensure-sqlite-db.mjs",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "prestart": "node scripts/ensure-sqlite-db.mjs && prisma migrate deploy",
+    "start": "next start",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.0.0",
+    "lucide-react": "^0.468.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "rss-parser": "^3.13.0",
+    "sanitize-html": "^2.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/sanitize-html": "^2.11.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^15.0.0",
+    "postcss": "^8.5.10",
+    "prisma": "^6.0.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.9"
+  },
+  "overrides": {
+    "esbuild": "^0.25.0",
+    "postcss": "^8.5.10"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
