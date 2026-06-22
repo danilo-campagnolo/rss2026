@@ -36,6 +36,12 @@ export type ReaderEntry = {
 
 export type StatusFilter = "all" | "unread" | "read" | "starred";
 
+export type ReaderEntryFilters = {
+  feedId?: string | null;
+  status?: string | null;
+  query?: string | null;
+};
+
 export async function getReaderFeeds(): Promise<ReaderFeed[]> {
   const feeds = await prisma.feed.findMany({
     include: {
@@ -70,39 +76,8 @@ export async function getReaderFeeds(): Promise<ReaderFeed[]> {
   }));
 }
 
-export async function getReaderEntries(options?: {
-  feedId?: string | null;
-  status?: string | null;
-  query?: string | null;
-}): Promise<ReaderEntry[]> {
-  const feedId = options?.feedId;
-  const status = normalizeStatusFilter(options?.status);
-  const query = options?.query?.trim();
-  const where: Prisma.EntryWhereInput = {};
-
-  if (feedId && feedId !== "all") {
-    where.feedId = feedId;
-  }
-
-  if (status === "unread") {
-    where.isRead = false;
-  }
-
-  if (status === "read") {
-    where.isRead = true;
-  }
-
-  if (status === "starred") {
-    where.isStarred = true;
-  }
-
-  if (query) {
-    where.OR = [
-      { title: { contains: query } },
-      { summary: { contains: query } },
-      { content: { contains: query } }
-    ];
-  }
+export async function getReaderEntries(options?: ReaderEntryFilters): Promise<ReaderEntry[]> {
+  const where = buildReaderEntryWhere(options);
 
   const entries = await prisma.entry.findMany({
     where,
@@ -133,6 +108,39 @@ export async function getReaderEntries(options?: {
     isStarred: entry.isStarred,
     feed: entry.feed
   }));
+}
+
+export function buildReaderEntryWhere(options?: ReaderEntryFilters): Prisma.EntryWhereInput {
+  const feedId = options?.feedId;
+  const status = normalizeStatusFilter(options?.status);
+  const query = options?.query?.trim();
+  const where: Prisma.EntryWhereInput = {};
+
+  if (feedId && feedId !== "all") {
+    where.feedId = feedId;
+  }
+
+  if (status === "unread") {
+    where.isRead = false;
+  }
+
+  if (status === "read") {
+    where.isRead = true;
+  }
+
+  if (status === "starred") {
+    where.isStarred = true;
+  }
+
+  if (query) {
+    where.OR = [
+      { title: { contains: query } },
+      { summary: { contains: query } },
+      { content: { contains: query } }
+    ];
+  }
+
+  return where;
 }
 
 function normalizeStatusFilter(value: string | null | undefined): StatusFilter {

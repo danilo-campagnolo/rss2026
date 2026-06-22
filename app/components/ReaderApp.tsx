@@ -18,6 +18,12 @@ type ReaderAppProps = {
   initialError?: string | null;
 };
 
+type EntryFilterSnapshot = {
+  feedId: string;
+  status: StatusFilter;
+  query: string;
+};
+
 export function ReaderApp({
   initialFeeds = [],
   initialEntries = [],
@@ -33,10 +39,15 @@ export function ReaderApp({
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError);
   const [mobileView, setMobileView] = useState<MobileView>("entries");
   const hasMountedFilters = useRef(false);
+  const entryFilters = useRef<EntryFilterSnapshot>({ feedId: "all", status: "all", query: "" });
+  const latestEntryRequestId = useRef(0);
+
+  entryFilters.current = { feedId: selectedFeedId, status, query };
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.id === selectedEntryId) ?? entries[0] ?? null,
@@ -44,6 +55,7 @@ export function ReaderApp({
   );
 
   const unreadTotal = feeds.reduce((total, feed) => total + feed.unreadCount, 0);
+  const canMarkAllRead = entries.some((entry) => !entry.isRead);
 
   useEffect(() => {
     if (initialError || initialFeeds.length === 0) {
@@ -77,28 +89,36 @@ export function ReaderApp({
     setFeeds(data.feeds);
   }
 
-  async function loadEntries() {
+  async function loadEntries(filters?: Partial<EntryFilterSnapshot>) {
+    const filterSnapshot = { ...entryFilters.current, ...filters };
+    const requestId = latestEntryRequestId.current + 1;
+    latestEntryRequestId.current = requestId;
     const params = new URLSearchParams();
-    params.set("feedId", selectedFeedId);
-    params.set("status", status);
-    if (query.trim()) {
-      params.set("q", query.trim());
+    params.set("feedId", filterSnapshot.feedId);
+    params.set("status", filterSnapshot.status);
+    if (filterSnapshot.query.trim()) {
+      params.set("q", filterSnapshot.query.trim());
     }
 
     const response = await fetch(`/api/entries?${params.toString()}`, { cache: "no-store" });
-    const data = await response.json();
+    const data = (await response.json()) as { entries?: Entry[]; error?: string };
+
+    if (requestId !== latestEntryRequestId.current) {
+      return;
+    }
 
     if (!response.ok) {
       throw new Error(data.error ?? "Unable to load entries.");
     }
 
-    setEntries(data.entries);
+    const nextEntries = data.entries ?? [];
+    setEntries(nextEntries);
     setSelectedEntryId((current) => {
-      if (current && data.entries.some((entry: Entry) => entry.id === current)) {
+      if (current && nextEntries.some((entry) => entry.id === current)) {
         return current;
       }
 
-      return data.entries[0]?.id ?? null;
+      return nextEntries[0]?.id ?? null;
     });
   }
 
@@ -123,8 +143,8 @@ export function ReaderApp({
       setMessage(`Imported ${data.imported} new entries and updated ${data.updated}.`);
       setFeedUrl("");
       setIsImportOpen(false);
-      await Promise.all([loadFeeds(), loadEntries()]);
-      setSelectedFeedId(data.feedId);
+      updateSelectedFeed(data.feedId);
+      await Promise.all([loadFeeds(), loadEntries({ feedId: data.feedId })]);
       setMobileView("entries");
     } catch (requestError) {
       setError(getClientError(requestError));
@@ -203,12 +223,14 @@ export function ReaderApp({
         throw new Error(data.error ?? "Unable to delete feed.");
       }
 
-      if (selectedFeedId === feedId) {
-        setSelectedFeedId("all");
+      const nextFeedId = selectedFeedId === feedId ? "all" : selectedFeedId;
+
+      if (nextFeedId === "all") {
+        updateSelectedFeed("all");
       }
 
       setMessage("Feed deleted.");
-      await Promise.all([loadFeeds(), loadEntries()]);
+      await Promise.all([loadFeeds(), loadEntries({ feedId: nextFeedId })]);
     } catch (requestError) {
       setError(getClientError(requestError));
     }
@@ -239,6 +261,37 @@ export function ReaderApp({
     }
   }
 
+  async function markAllRead() {
+    const filterSnapshot = entryFilters.current;
+    setIsMarkingAllRead(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/entries", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...filterSnapshot, isRead: true })
+      });
+      const data = (await response.json()) as { count?: number; error?: string };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Unable to mark entries as read.");
+      }
+
+      await loadFeeds();
+      if (entryFiltersMatch(filterSnapshot, entryFilters.current)) {
+        await loadEntries(filterSnapshot);
+      }
+
+      setMessage(`Marked ${data.count ?? 0} entries as read.`);
+    } catch (requestError) {
+      setError(getClientError(requestError));
+    } finally {
+      setIsMarkingAllRead(false);
+    }
+  }
+
   function selectEntry(entry: Entry) {
     setSelectedEntryId(entry.id);
     setMobileView("reader");
@@ -246,6 +299,21 @@ export function ReaderApp({
     if (!entry.isRead) {
       void updateEntry(entry.id, { isRead: true });
     }
+  }
+
+  function updateSelectedFeed(feedId: string) {
+    entryFilters.current = { ...entryFilters.current, feedId };
+    setSelectedFeedId(feedId);
+  }
+
+  function updateStatus(nextStatus: StatusFilter) {
+    entryFilters.current = { ...entryFilters.current, status: nextStatus };
+    setStatus(nextStatus);
+  }
+
+  function updateQuery(nextQuery: string) {
+    entryFilters.current = { ...entryFilters.current, query: nextQuery };
+    setQuery(nextQuery);
   }
 
   return (
@@ -280,11 +348,11 @@ export function ReaderApp({
             onDeleteFeed={(feedId) => void deleteFeed(feedId)}
             onRefreshFeed={(feedId) => void refreshFeed(feedId)}
             onSelectAllFeeds={() => {
-              setSelectedFeedId("all");
+              updateSelectedFeed("all");
               setMobileView("entries");
             }}
             onSelectFeed={(feedId) => {
-              setSelectedFeedId(feedId);
+              updateSelectedFeed(feedId);
               setMobileView("entries");
             }}
           />
@@ -295,9 +363,12 @@ export function ReaderApp({
             query={query}
             selectedEntryId={selectedEntry?.id ?? null}
             status={status}
-            onQueryChange={setQuery}
+            canMarkAllRead={canMarkAllRead}
+            isMarkingAllRead={isMarkingAllRead}
+            onMarkAllRead={() => void markAllRead()}
+            onQueryChange={updateQuery}
             onSelectEntry={selectEntry}
-            onStatusChange={setStatus}
+            onStatusChange={updateStatus}
           />
 
           <ReaderPane
@@ -324,4 +395,8 @@ export function ReaderApp({
 
 function getClientError(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+function entryFiltersMatch(first: EntryFilterSnapshot, second: EntryFilterSnapshot): boolean {
+  return first.feedId === second.feedId && first.status === second.status && first.query === second.query;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Circle, Search, Star } from "lucide-react";
+import { Check, CheckCheck, Circle, Search, Star } from "lucide-react";
 
 import type { ReaderEntry as Entry, StatusFilter } from "@/lib/reader-data";
 import { formatDate } from "./date";
@@ -11,6 +11,9 @@ type EntryListPanelProps = {
   query: string;
   selectedEntryId: string | null;
   status: StatusFilter;
+  canMarkAllRead: boolean;
+  isMarkingAllRead: boolean;
+  onMarkAllRead: () => void;
   onQueryChange: (query: string) => void;
   onSelectEntry: (entry: Entry) => void;
   onStatusChange: (status: StatusFilter) => void;
@@ -22,6 +25,9 @@ export function EntryListPanel({
   query,
   selectedEntryId,
   status,
+  canMarkAllRead,
+  isMarkingAllRead,
+  onMarkAllRead,
   onQueryChange,
   onSelectEntry,
   onStatusChange
@@ -32,6 +38,9 @@ export function EntryListPanel({
         <EntryListControls
           query={query}
           status={status}
+          canMarkAllRead={canMarkAllRead}
+          isMarkingAllRead={isMarkingAllRead}
+          onMarkAllRead={onMarkAllRead}
           onQueryChange={onQueryChange}
           onStatusChange={onStatusChange}
         />
@@ -60,21 +69,43 @@ export function EntryListPanel({
 type EntryListControlsProps = {
   query: string;
   status: StatusFilter;
+  canMarkAllRead: boolean;
+  isMarkingAllRead: boolean;
+  onMarkAllRead: () => void;
   onQueryChange: (query: string) => void;
   onStatusChange: (status: StatusFilter) => void;
 };
 
-function EntryListControls({ query, status, onQueryChange, onStatusChange }: EntryListControlsProps) {
+function EntryListControls({
+  query,
+  status,
+  canMarkAllRead,
+  isMarkingAllRead,
+  onMarkAllRead,
+  onQueryChange,
+  onStatusChange
+}: EntryListControlsProps) {
   return (
     <div className="space-y-3 border-b border-line bg-white p-3">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-        <input
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Search entries"
-          className="h-10 w-full rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none focus:border-accent"
-        />
+      <div className="flex gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="Search entries"
+            className="h-10 w-full rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none focus:border-accent"
+          />
+        </div>
+        <button
+          type="button"
+          className="inline-flex h-10 w-10 flex-none items-center justify-center rounded-md border border-line bg-white text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={onMarkAllRead}
+          disabled={!canMarkAllRead || isMarkingAllRead}
+          title="Mark all read"
+        >
+          <CheckCheck size={17} />
+        </button>
       </div>
       <div className="grid grid-cols-4 rounded-md border border-line bg-slate-50 p-1 text-xs">
         {(["all", "unread", "read", "starred"] as StatusFilter[]).map((item) => (

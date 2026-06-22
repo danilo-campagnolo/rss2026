@@ -80,7 +80,9 @@ function FeedListItem({ feed, isSelected, onDelete, onRefresh, onSelect }: FeedL
       }`}
     >
       <button type="button" className="flex w-full items-start gap-2 px-3 py-2 text-left" onClick={onSelect}>
-        <div className="mt-1 h-2 w-2 flex-none rounded-full bg-accent" />
+        <div className="mt-1 h-2 w-2 flex-none">
+          {feed.unreadCount > 0 && <div className="h-2 w-2 rounded-full bg-accent" />}
+        </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{feed.title}</div>
           <div className="truncate text-xs text-slate-500">
